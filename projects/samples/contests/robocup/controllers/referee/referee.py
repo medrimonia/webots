@@ -17,6 +17,7 @@ from construct import Container
 
 from controller import Supervisor, AnsiCodes
 
+import argparse
 import json
 import math
 import os
@@ -234,12 +235,37 @@ def game_controller_send(message):
             except BlockingIOError:
                 return
 
+def test_initial_positions():
+    # See test_initial_positions/README.md
+    expected_penalties = [[True, True, False, False], [False, True, False, True]]
+    failed = False
+    for team_id in range(2):
+        for robot_id in range(4):
+            robot_penalty = game.state.teams[team_id].players[robot_id].penalty
+            is_penalized = robot_penalty != 0
+            if is_penalized == expected_penalties[team_id][robot_id]:
+                print(f'SUCCESS: valid penalty state for team {team_id}, player {robot_id+1}')
+            else:
+                print(f'FAIL: invalid penalty state for team {team_id}, player {robot_id+1} (status: {robot_penalty})')
+                failed = True
+    # TODO Check the position of the robot before reaching ready
+    # TODO Check that the type of the penalty is appropriate rather than only checking that robots are penalized
+    # TODO Add a test that the log messages properly announced the penalties for the concerned robots
+    supervisor.simulationQuit(failed)
+
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument("--mode", type=str, default="classic",
+                        choices=["classic","test_initial_positions"],
+                        help="Defines the mode used for the AutoRef")
+arg_parser.add_argument("--game", type=str, default="game.json",
+                        help="Path to the game file")
+args = arg_parser.parse_args()
 
 game_controller_send.id = 0
 game_controller_send.unanswered = {}
 
 # read configuration files
-with open('game.json') as json_file:
+with open(args.game) as json_file:
     game = json.loads(json_file.read(), object_hook=lambda d: SimpleNamespace(**d))
 with open(game.red.config) as json_file:
     red_team = json.load(json_file)
@@ -408,6 +434,14 @@ while supervisor.step(time_step) != -1:
         # the GameController will automatically change to the SET state once the state READY is over
         # the referee should wait about 5 seconds since the state SET started before sending the PLAY state
         game.play_countdown = int(5000 / time_step)
+        print("Game state is ready")
+        print(f'args.mode: {args.mode}')
+        if (args.mode == "test_initial_positions"):
+            print("mode OK")
+            # We spend a few seconds in READY state before checking values
+            if (game.state.secondary_seconds_remaining < 44):
+                print("time OK")
+                test_initial_positions()
     elif game.state.game_state == 'STATE_SET' and game.play_countdown > 0:
         game.play_countdown -= 1
         if game.play_countdown == 0:
@@ -420,7 +454,6 @@ while supervisor.step(time_step) != -1:
                 game.finish_countdown -= 1
                 if game.finish_countdown == 0:
                     game_controller_send('STATE:READY')  # begining of second half
-
     elif game.state.game_state == 'STATE_INITIAL':
         pass
 
