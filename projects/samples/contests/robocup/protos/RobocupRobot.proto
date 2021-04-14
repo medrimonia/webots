@@ -22,8 +22,8 @@ PROTO RobocupRobot [
     controllerArgs IS controllerArgs
     controller "player"
     selfCollision TRUE
-    cameraWidth 320
-    cameraHeight 240
+    cameraWidth 800
+    cameraHeight 600
     backlash TRUE
     %{
       if fields.name.value ~= '' then

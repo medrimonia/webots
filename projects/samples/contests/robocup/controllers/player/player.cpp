@@ -52,8 +52,8 @@ typedef int socklen_t;
 #include <webots/Robot.hpp>
 #include <webots/TouchSensor.hpp>
 
-// teams are limited to a bandwdith of 100 MB/s from the server evaluated on a floating time window of 1000 milliseconds.
-#define TEAM_QUOTA (100 * 1024 * 1024)
+// teams are limited to a bandwdith of 250 MB/s from the server evaluated on a floating time window of 1000 milliseconds.
+#define TEAM_QUOTA (250 * 1024 * 1024)
 
 static int server_fd = -1;
 static fd_set rfds;
@@ -369,20 +369,25 @@ int main(int argc, char *argv[]) {
               if (camera) {
                 if (controller_time % camera->getSamplingPeriod())
                   continue;
+
+                printf("Sending an image of size: %d x %d\n", camera->getWidth(), camera->getHeight());
+
                 CameraMeasurement *measurement = sensorMeasurements.add_cameras();
+                int width = camera->getWidth();
+                int height = camera->getHeight();
                 measurement->set_name(camera->getName());
-                measurement->set_width(camera->getWidth());
-                measurement->set_height(camera->getHeight());
+                measurement->set_width(width);
+                measurement->set_height(height);
                 measurement->set_quality(-1);  // raw image (JPEG compression not yet supported)
-                measurement->set_image((const char *)camera->getImage());
+                measurement->set_image((const char *)camera->getImage(), width * height * 3);
 
                 // testing JPEG compression (impacts the performance)
-                unsigned char *buffer = NULL;
-                long unsigned int bufferSize = 0;
-                const unsigned char *image = camera->getImage();
-                encode_jpeg(image, camera->getWidth(), camera->getHeight(), 95, &bufferSize, &buffer);
-                free_jpeg(buffer);
-                buffer = NULL;
+                // unsigned char *buffer = NULL;
+                // long unsigned int bufferSize = 0;
+                // const unsigned char *image = camera->getImage();
+                // encode_jpeg(image, camera->getWidth(), camera->getHeight(), 95, &bufferSize, &buffer);
+                // free_jpeg(buffer);
+                // buffer = NULL;
 
                 continue;
               }
