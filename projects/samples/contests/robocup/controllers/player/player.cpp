@@ -54,8 +54,10 @@ typedef int socklen_t;
 
 #include <chrono>
 
+#include <opencv2/imgproc.hpp>
+
 // teams are limited to a bandwdith of 100 MB/s from the server evaluated on a floating time window of 1000 milliseconds.
-#define TEAM_QUOTA (100 * 1024 * 1024)
+#define TEAM_QUOTA (1000 * 1024 * 1024)
 #define RED 0
 #define BLUE 1
 
@@ -470,16 +472,31 @@ public:
         measurement->set_width(width);
         measurement->set_height(height);
         measurement->set_quality(-1);  // raw image (JPEG compression not yet supported)
+        auto img_start = sc::now();
         const unsigned char *rgba_image = camera->getImage();
-        const int rgb_image_size = width * height * 3;
-        unsigned char *rgb_image = new unsigned char[rgb_image_size];
-        for (int i = 0; i < width * height; i++) {
-          rgb_image[3 * i] = rgba_image[4 * i];
-          rgb_image[3 * i + 1] = rgba_image[4 * i + 1];
-          rgb_image[3 * i + 2] = rgba_image[4 * i + 2];
-        }
-        measurement->set_image(rgb_image, rgb_image_size);
-        delete[] rgb_image;
+        auto after_get = sc::now();
+        cv::Mat rgba_mat(height, width, CV_8UC4);
+        memcpy(rgba_mat.data, rgba_image, width * height * 4);
+        auto after_memcpy = sc::now();
+        cv::Mat rgb_mat;
+        cv::cvtColor(rgba_mat, rgb_mat, cv::COLOR_BGRA2BGR);
+        auto after_cvt_color = sc::now();
+        std::cout << "Setting measurement with data size: " << (width * height * 3) << std::endl;
+        measurement->set_image(rgb_mat.data, width * height * 3);
+        auto after_set_image = sc::now();
+        benchmarkPrint("camera->getImage", after_get, img_start);
+        benchmarkPrint("memcpy", after_memcpy, after_get);
+        benchmarkPrint("cvtColor", after_cvt_color, after_memcpy);
+        benchmarkPrint("setImage", after_set_image, after_cvt_color);
+        // const int rgb_image_size = width * height * 3;
+        // unsigned char *rgb_image = new unsigned char[rgb_image_size];
+        // for (int i = 0; i < width * height; i++) {
+        //   rgb_image[3 * i] = rgba_image[4 * i];
+        //   rgb_image[3 * i + 1] = rgba_image[4 * i + 1];
+        //   rgb_image[3 * i + 2] = rgba_image[4 * i + 2];
+        // }
+        // measurement->set_image(rgb_image, rgb_image_size);
+        // delete[] rgb_image;
 
         // testing JPEG compression (impacts the performance)
         // unsigned char *buffer = NULL;
@@ -552,13 +569,16 @@ public:
   }
 
   void sendSensorMessage() {
-    const uint32_t size = sensor_measurements.ByteSizeLong();
+    uint32_t size = sensor_measurements.ByteSizeLong();
     if (bandwidth_usage(size) > TEAM_QUOTA) {
       sensor_measurements.Clear();
       Message *message = sensor_measurements.add_messages();
       message->set_message_type(Message::ERROR_MESSAGE);
       message->set_text(std::to_string(TEAM_QUOTA) + " MB/s quota exceeded.");
+      size = sensor_measurements.ByteSizeLong();
+      printMessage("Quota exceeded");
     }
+    printMessage("Sending a message of size: " + std::to_string(size));
     char *output = new char[sizeof(uint32_t) + size];
     uint32_t *output_size = (uint32_t *)output;
     *output_size = htonl(size);
